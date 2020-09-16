@@ -41,6 +41,45 @@ class mysql_database:
     def __del__(self):
         self.connection.close()
 
+class remote_mysql_database:
+    def __init__(self):
+        credentials_file = os.path.join(os.path.dirname(__file__), "remote_credentials.mysql")
+        f = open(credentials_file, "r")
+        credentials = json.load(f)
+        f.close()
+        for key, value in credentials.items(): #remove whitespace
+            credentials[key] = value.strip()
+
+        self.connection = MySQLdb.connect(host=credentials["HOST"], user=credentials["USERNAME"], password=credentials["PASSWORD"], database=credentials["DATABASE"])
+        self.cursor = self.connection.cursor()
+
+    def reconnect(self):
+        credentials_file = os.path.join(os.path.dirname(__file__), "remote_credentials.mysql")
+        f = open(credentials_file, "r")
+        credentials = json.load(f)
+        f.close()
+        for key, value in credentials.items(): #remove whitespace
+            credentials[key] = value.strip()
+
+        self.connection = MySQLdb.connect(host=credentials["HOST"], user=credentials["USERNAME"], password=credentials["PASSWORD"], database=credentials["DATABASE"])
+        self.cursor = self.connection.cursor()  
+
+    def execute(self, query, params = []):
+        try:
+            self.cursor.execute(query, params)
+            self.connection.commit()
+        except:
+            self.connection.rollback()
+            raise
+
+    def query(self, query):
+        cursor = self.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute(query)
+        return cursor.fetchall()
+
+    def __del__(self):
+        self.connection.close()
+
 class oracle_apex_database:
     def __init__(self, path, host = "apex.oracle.com"):
         self.host = host
@@ -112,9 +151,17 @@ class oracle_apex_database:
 class weather_database:
     def __init__(self):
         self.db = mysql_database()
-        self.insert_template = "INSERT INTO WEATHER_MEASUREMENT (AMBIENT_TEMPERATURE, GROUND_TEMPERATURE, AIR_QUALITY, AIR_PRESSURE, HUMIDITY, WIND_DIRECTION, WIND_SPEED, WIND_GUST_SPEED, RAINFALL, CREATED) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"
+        self.connect_remote()
+            
+        self.insert_template = "INSERT INTO WEATHER_MEASUREMENT (AMBIENT_TEMPERATURE, GROUND_TEMPERATURE, AIR_QUALITY, AIR_PRESSURE, HUMIDITY, WIND_DIRECTION, WIND_SPEED, WIND_GUST_SPEED, RAINFALL, LIGHTNING_COUNT, TIMESTAMP, CREATED) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"
         self.update_template =  "UPDATE WEATHER_MEASUREMENT SET REMOTE_ID=%s WHERE ID=%s;"
         self.upload_select_template = "SELECT * FROM WEATHER_MEASUREMENT WHERE REMOTE_ID IS NULL;"
+
+    def connect_remote(self):
+        try:
+            self.remote_db = remote_mysql_database()
+        except Exception as e:
+            print("Problem connecting to remote DB: ", e)
 
     def is_number(self, s):
         try:
@@ -126,7 +173,8 @@ class weather_database:
     def is_none(self, val):
         return val if val != None else "NULL"
 
-    def insert(self, ambient_temperature, ground_temperature, air_quality, air_pressure, humidity, wind_direction, wind_speed, wind_gust_speed, rainfall, created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")):
+    def insert(self, ambient_temperature, ground_temperature, air_quality, air_pressure, humidity, wind_direction, wind_speed, wind_gust_speed, rainfall, lightning_count, timestamp, created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")):
+        timestamp = round(timestamp, 6)
         params = ( ambient_temperature,
             ground_temperature,
             air_quality,
@@ -136,9 +184,20 @@ class weather_database:
             wind_speed,
             wind_gust_speed,
             rainfall,
+            lightning_count,
+            timestamp,
             created )
         print(self.insert_template % params)
         self.db.execute(self.insert_template, params)
+        try:
+            if hasattr(self, 'remote_db') == False:
+                self.connect_remote()
+            self.remote_db.reconnect()
+            self.remote_db.execute(self.insert_template, params)
+        except Exception as e:
+            print("Could not update remote DB", e)
+
+        return self.db.connection.insert_id()
 
     def upload(self):
         results = self.db.query(self.upload_select_template)
@@ -163,6 +222,7 @@ class weather_database:
                     row["WIND_SPEED"],
                     row["WIND_GUST_SPEED"],
                     row["RAINFALL"],
+                    row["TIMESTAMP"],
                     row["CREATED"].strftime("%Y-%m-%dT%H:%M:%S"))
 
                 if response_data != None and response_data != "-1":
