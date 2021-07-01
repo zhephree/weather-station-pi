@@ -153,7 +153,7 @@ class weather_database:
         self.db = mysql_database()
         self.connect_remote()
             
-        self.insert_template = "INSERT INTO WEATHER_MEASUREMENT (AMBIENT_TEMPERATURE, GROUND_TEMPERATURE, AIR_QUALITY, AIR_PRESSURE, HUMIDITY, WIND_DIRECTION, WIND_SPEED, WIND_GUST_SPEED, RAINFALL, LIGHTNING_COUNT, TIMESTAMP, CREATED) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"
+        self.insert_template = "INSERT INTO WEATHER_MEASUREMENT (AMBIENT_TEMPERATURE, GROUND_TEMPERATURE, AIR_QUALITY, AIR_PRESSURE, HUMIDITY, WIND_DIRECTION, WIND_SPEED, WIND_GUST_SPEED, RAINFALL, LIGHTNING_COUNT, NEW_WIND_SPEED, NEW_WIND_GUST_SPEED, TIMESTAMP, CREATED) VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"
         self.update_template =  "UPDATE WEATHER_MEASUREMENT SET REMOTE_ID=%s WHERE ID=%s;"
         self.upload_select_template = "SELECT * FROM WEATHER_MEASUREMENT WHERE REMOTE_ID IS NULL;"
 
@@ -173,7 +173,7 @@ class weather_database:
     def is_none(self, val):
         return val if val != None else "NULL"
 
-    def insert(self, ambient_temperature, ground_temperature, air_quality, air_pressure, humidity, wind_direction, wind_speed, wind_gust_speed, rainfall, lightning_count, timestamp, created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")):
+    def insert(self, ambient_temperature, ground_temperature, air_quality, air_pressure, humidity, wind_direction, wind_speed, wind_gust_speed, rainfall, lightning_count, new_wind_speed, new_wind_gust_speed, timestamp, created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")):
         timestamp = round(timestamp, 6)
         params = ( ambient_temperature,
             ground_temperature,
@@ -185,6 +185,8 @@ class weather_database:
             wind_gust_speed,
             rainfall,
             lightning_count,
+            new_wind_speed,
+            new_wind_gust_speed,
             timestamp,
             created )
         print(self.insert_template % params)

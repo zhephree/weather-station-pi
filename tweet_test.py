@@ -27,6 +27,7 @@ id_data = id_results[0]
 last_id = id_data["ID"]
 del db
 
-tweet.postTweet(last_data['AMBIENT_TEMPERATURE'], last_data['GROUND_TEMPERATURE'], last_data['HUMIDITY'], last_data['AIR_PRESSURE'], last_data['WIND_SPEED'], last_data['WIND_SPEED'], rain_data, last_id, True)
+tweet.postTweet(float(last_data['AMBIENT_TEMPERATURE']), float(last_data['GROUND_TEMPERATURE']), float(last_data['HUMIDITY']), float(last_data['AIR_PRESSURE']), float(last_data['NEW_WIND_SPEED']), float(last_data['NEW_WIND_SPEED']), rain_data, last_id, True)
 
 
+tweet.postLightningTweet(3335, 6, True)
