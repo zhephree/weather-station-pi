@@ -12,11 +12,13 @@ from datetime import date
 from datetime import datetime
 from RPi_AS3935 import RPi_AS3935
 import RPi.GPIO as GPIO
+import realtime
 
 BUCKET_SIZE = 0.2794
 rain_count = 0
 lightning_count = 0
 store_speeds = []
+new_store_speeds = []
 store_directions = []
 wind_count = 0
 radius_cm = 9.0
@@ -26,13 +28,15 @@ CM_IN_A_KM = 10000.0
 CM_IN_A_MI = 160934.0
 SECS_IN_AN_HOUR = 3600
 ADJUSTMENT = 1.18
+MPH_PER_CLICK = 1.492
 gust = 0
+new_gust = 0
 tweet_interval = (30 * 60) / interval
 interval_count = 0
 last_alert = datetime.min
 strikes_since_last_alert = 0
 
-
+#realtime.listen(5000)
 
 def spin():
     global wind_count
@@ -42,6 +46,7 @@ def spin():
 def calculate_speed(time_sec):
     global wind_count
     global gust
+    global interval
 
     circumference_cm = (2 * math.pi) * radius_cm
     rotations = wind_count / 2.0
@@ -61,7 +66,12 @@ def calculate_speed(time_sec):
 
     final_speed = km_per_hour * ADJUSTMENT
 
-    return final_speed
+    clicks_per_sec = wind_count / time_sec
+    new_final_speed = clicks_per_sec * MPH_PER_CLICK
+
+    #print('NEW WIND CALC = ' + str(new_final_speed))
+
+    return final_speed, new_final_speed
 
 def reset_wind():
     global wind_count
@@ -118,6 +128,7 @@ def lightning_strike(channel):
         rawdb = database.remote_mysql_database()
         rawdb.execute(query, params)
         del rawdb
+        tweet.postLightningTweet(energy, distance, False)
         #else:
         #    strikes_since_last_alert = 0
     if (current_timestamp - last_alert).seconds > 1800 and last_alert != datetime.min:
@@ -158,14 +169,21 @@ while True:
         reset_wind()
         #time.sleep(wind_interval)
         while time.time() - wind_start_time <= wind_interval:
-            store_directions.append(wind_direction_byo.get_value())
+            winddir = wind_direction_byo.get_value()
+            store_directions.append(winddir)
             
-        final_speed = calculate_speed(wind_interval)
+        final_speed, new_final_speed = calculate_speed(wind_interval)
         store_speeds.append(final_speed)
+        new_store_speeds.append(new_final_speed)
+        #realtime.sio.emit('message', {'wind_speed': new_final_speed, 'wind_direction':  winddir})
+
     wind_average = wind_direction_byo.get_average(store_directions)
 
     wind_gust = max(store_speeds)
     wind_speed = statistics.mean(store_speeds)
+
+    new_wind_gust = max(new_store_speeds)
+    new_wind_speed = statistics.mean(new_store_speeds)
     
     rainfall = rain_count * BUCKET_SIZE
     reset_rainfall()
@@ -182,8 +200,8 @@ while True:
 
     timestamp = time.time()
     
-    print(wind_speed, wind_gust, wind_average, rainfall, humidity, pressure, ambient_temp, ambient_temp_f, ground_temp, lightning_count)
-    db.insert(ambient_temp, ground_temp, 0, pressure, humidity, wind_average, wind_speed, wind_gust, rainfall, lightning_count, timestamp)
+    print(wind_speed, new_wind_speed, wind_gust, new_wind_gust, wind_average, rainfall, humidity, pressure, ambient_temp, ambient_temp_f, ground_temp, lightning_count)
+    db.insert(ambient_temp, ground_temp, 0, pressure, humidity, wind_average, wind_speed, wind_gust, rainfall, lightning_count, new_wind_speed, new_wind_gust, timestamp)
 
     reset_lightning()
     
@@ -206,9 +224,11 @@ while True:
         del rawdb
         
         interval_count = 0
-        tweet.postTweet(ambient_temp, ground_temp, humidity, pressure, wind_speed, wind_average, rain_data, last_id)
+        tweet.postTweet(ambient_temp, ground_temp, humidity, pressure, new_wind_speed, wind_average, rain_data, last_id)
         
 
         
     store_speeds = []
     store_directions = []
+    new_store_speeds = []
+    
