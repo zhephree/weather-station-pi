@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 
 Adafruit_CCS811_python/
+remote_credentials.mysql
